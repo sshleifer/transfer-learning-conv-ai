@@ -52,6 +52,7 @@ def get_dataset(tokenizer, dataset_path, dataset_cache=None):
             torch.save(dataset, dataset_cache)
     return dataset
 
+
 def get_dataset_personalities(tokenizer, dataset_path, dataset_cache=None):
     """ Get personalities from PERSONACHAT """
     dataset_path = dataset_path or PERSONACHAT_URL

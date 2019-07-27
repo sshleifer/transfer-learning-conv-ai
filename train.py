@@ -62,9 +62,8 @@ def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=Fals
     return instance, sequence
 
 
-def get_data_loaders(args, tokenizer):
+def get_data_loaders(personachat, args, tokenizer):
     """ Prepare the dataset for training and evaluation """
-    personachat = get_dataset(tokenizer, args.dataset_path, args.dataset_cache)
 
     logger.info("Build inputs and labels")
     datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
@@ -78,7 +77,7 @@ def get_data_loaders(args, tokenizer):
                 for utterance in dialog["utterances"]:
                     history = utterance["history"][-(2*args.max_history+1):]
                     for j, candidate in enumerate(utterance["candidates"][-num_candidates:]):
-                        lm_labels = bool(j == num_candidates-1)
+                        lm_labels = bool(j == num_candidates-1) # Last candidate is correct
                         instance, _ = build_input_from_segments(persona, history, candidate, tokenizer, lm_labels)
                         for input_name, input_array in instance.items():
                             datasets[dataset_name][input_name].append(input_array)
@@ -160,7 +159,8 @@ def train():
         model = DistributedDataParallel(model, device_ids=[args.local_rank], output_device=args.local_rank)
 
     logger.info("Prepare datasets")
-    train_loader, val_loader, train_sampler, valid_sampler = get_data_loaders(args, tokenizer)
+    personachat = get_dataset(tokenizer, args.dataset_path, args.dataset_cache)
+    train_loader, val_loader, train_sampler, valid_sampler = get_data_loaders(personachat, args, tokenizer)
 
     # Training function and trainer
     def update(engine, batch):
