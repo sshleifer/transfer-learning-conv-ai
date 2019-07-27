@@ -45,7 +45,7 @@ def pad_dataset(dataset, padding=0):
     return dataset
 
 
-def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=False, with_eos=True):
+def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=False, with_eos=True, max_seq_len=512):
     """ Build a sequence of input from 3 segments: persona, history and last reply """
     bos, eos, speaker1, speaker2 = tokenizer.convert_tokens_to_ids(SPECIAL_TOKENS[:-1])
 
@@ -53,7 +53,7 @@ def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=Fals
     sequence = [[bos] + list(chain(*persona))] + history + [reply + ([eos] if with_eos else [])]
     sequence = [sequence[0]] + [[speaker2 if (len(sequence)-i) % 2 else speaker1] + s for i, s in enumerate(sequence[1:])]
 
-    instance["input_ids"] = list(chain(*sequence))
+    instance["input_ids"] = list(chain(*sequence))[-max_seq_len:]
     instance["token_type_ids"] = [speaker2 if i % 2 else speaker1 for i, s in enumerate(sequence) for _ in s]
     instance["mc_token_ids"] = len(instance["input_ids"]) - 1
     instance["lm_labels"] = [-1] * len(instance["input_ids"])
@@ -222,29 +222,31 @@ def train():
         metric.attach(evaluator, name)
 
     # On the main process: add progress bar, tensorboard, checkpoints and save model, configuration and tokenizer before we start to train
+
+    log_dir = 'tboard_logs'
     if args.local_rank in [-1, 0]:
         pbar = ProgressBar(persist=True)
         pbar.attach(trainer, metric_names=["loss"])
         evaluator.add_event_handler(Events.COMPLETED, lambda _: pbar.log_message("Validation: %s" % pformat(evaluator.state.metrics)))
 
-        tb_logger = TensorboardLogger(log_dir=None)
+        tb_logger = TensorboardLogger(log_dir=log_dir)
         tb_logger.attach(trainer, log_handler=OutputHandler(tag="training", metric_names=["loss"]), event_name=Events.ITERATION_COMPLETED)
         tb_logger.attach(trainer, log_handler=OptimizerParamsHandler(optimizer), event_name=Events.ITERATION_STARTED)
         tb_logger.attach(evaluator, log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer), event_name=Events.EPOCH_COMPLETED)
 
-        checkpoint_handler = ModelCheckpoint(tb_logger.writer.log_dir, 'checkpoint', save_interval=1, n_saved=3)
+        checkpoint_handler = ModelCheckpoint(log_dir, 'checkpoint', save_interval=1, n_saved=3)
         trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
 
-        torch.save(args, tb_logger.writer.log_dir + '/model_training_args.bin')
-        getattr(model, 'module', model).config.to_json_file(os.path.join(tb_logger.writer.log_dir, CONFIG_NAME))
-        tokenizer.save_vocabulary(tb_logger.writer.log_dir)
+        torch.save(args, log_dir + '/model_training_args.bin')
+        getattr(model, 'module', model).config.to_json_file(os.path.join(log_dir, CONFIG_NAME))
+        tokenizer.save_vocabulary(log_dir)
 
     # Run the training
     trainer.run(train_loader, max_epochs=args.n_epochs)
 
     # On the main process: close tensorboard logger and rename the last checkpoint (for easy re-loading with OpenAIGPTModel.from_pretrained method)
     if args.local_rank in [-1, 0] and args.n_epochs > 0:
-        os.rename(checkpoint_handler._saved[-1][1][-1], os.path.join(tb_logger.writer.log_dir, WEIGHTS_NAME))  # TODO: PR in ignite to have better access to saved file paths (cleaner)
+        os.rename(checkpoint_handler._saved[-1][1][-1], os.path.join(log_dir, WEIGHTS_NAME))  # TODO: PR in ignite to have better access to saved file paths (cleaner)
         tb_logger.close()
 
 if __name__ == "__main__":
