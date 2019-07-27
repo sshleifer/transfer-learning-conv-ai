@@ -85,6 +85,14 @@ def get_dataset_personalities(tokenizer, dataset_path, dataset_cache=None):
     logger.info("Gathered {} personalities".format(len(personalities)))
     return personalities
 
+
+def rtrunc(obj):
+    if isinstance(obj, int):
+        raise ValueError(obj)
+    if isinstance(obj, dict):
+        return dict((n, rtrunc(o)) for n, o in obj.items())
+    return obj[-512:]
+
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)

@@ -38,7 +38,7 @@ def average_distributed_scalar(scalar, args):
 
 
 def pad_dataset(dataset, padding=0):
-    """ Pad the dataset. This could be optimized by defining a Dataset class and padd only batches but this is simpler. """
+    """ Pad the dataset. This could be optimized by defining a Dataset class and pad only batches but this is simpler. """
     max_l = max(len(x) for x in dataset["input_ids"])
     print(max_l)
     for name in PADDED_INPUTS:
@@ -58,11 +58,17 @@ def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=Fals
     end = [reply + ([eos] if with_eos else [])]
     n_speaker_toks = len(history) + len(reply)
     extra_toks = (max_seq_len - len(lchain(start)) - len(lchain(end)) - n_speaker_toks)
-    sequence = start + history[-extra_toks:] + end
-    sequence = [sequence[0]] + [[speaker2 if (len(sequence)-i) % 2 else speaker1] + s
-                                for i, s in enumerate(sequence[1:])]
-    assert len(sequence) <= 512
+
+
+    while len(lchain(history)) > extra_toks:
+        history = history[1:]
+    sequence = start + history + end
+    hist_part = [[speaker2 if (len(sequence) - i) % 2 else speaker1] + s for i, s in enumerate(sequence[1:])]
+
+    sequence = [sequence[0]] + hist_part
+    if len(lchain(sequence)) > 512: import ipdb; ipdb.set_trace()
     instance["input_ids"] = list(chain(*sequence))
+
     instance["token_type_ids"] = [speaker2 if i % 2 else speaker1 for i, s in enumerate(sequence) for _ in s]
     instance["mc_token_ids"] = len(instance["input_ids"]) - 1
     instance["lm_labels"] = [-1] * len(instance["input_ids"])
