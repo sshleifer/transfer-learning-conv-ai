@@ -43,7 +43,7 @@ def get_dataset(tokenizer, dataset_path, dataset_cache=None):
         logger.info("Tokenize and encode the dataset")
         def tokenize(obj):
             if isinstance(obj, str):
-                return tokenizer.convert_tokens_to_ids(tokenizer.tokenize(obj))
+                return tokenizer.convert_tokens_to_ids(tokenizer.tokenize(obj)[:-512:])
             if isinstance(obj, dict):
                 return dict((n, tokenize(o)) for n, o in obj.items())
             return list(tokenize(o) for o in obj)
