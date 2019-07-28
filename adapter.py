@@ -10,6 +10,13 @@ HISTORY = 'history'
 CANDIDATES  = 'candidates'
 UTTERANCES = 'utterances'
 
+DR_PERSONALITY = lmap(whitespace_around_punc, [
+    'I am a doctor for first opinion.',
+    'I am in India and I am real.',
+    'I am here to help with your medical problem',
+    'I hope you feel better',
+
+])
 def extra_preprocess(strang):
     return whitespace_around_punc(' '.join(strang.split(' ')[1:])).lower()
 def get_candidates(target, clus_map, n_distractors=5):
