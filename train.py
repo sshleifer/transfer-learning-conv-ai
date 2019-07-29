@@ -224,8 +224,6 @@ def train(args):
         if engine.state.iteration % args.gradient_accumulation_steps == 0:
             optimizer.step()
             optimizer.zero_grad()
-        if (engine.state.iteration % getattr(args, 'eval_every') == 1):
-            engine.fire_event(EvalEvents.TIME_TO_RUN_EVAL)
         return loss.item()
     trainer = Engine(update)
 
