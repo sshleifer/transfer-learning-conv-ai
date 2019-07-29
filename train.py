@@ -20,13 +20,25 @@ from ignite.contrib.handlers.tensorboard_logger import TensorboardLogger, Output
 from pytorch_pretrained_bert import (OpenAIAdam, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer,
                                      GPT2DoubleHeadsModel, GPT2Tokenizer, WEIGHTS_NAME, CONFIG_NAME)
 
+
 from durbango import *
 
-SPECIAL_TOKENS = ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
+
+MSG_USER = 'xMsg_User'  # user message begin tag / begin of individual message
+MSG_DR = 'xMsg_Dr'  # Dr message begin tag / begin of individual message
+USER_NAME = 'xUser_Name'
+DR_NAME = 'xDr_Name'
+FOLLOWUP_MSG = 'xFollowup_Msg'
+DR_STRANG = 'Dr'
+
+FO_SPECIAL_TOKENS = [MSG_USER, MSG_DR, USER_NAME, DR_NAME, FOLLOWUP_MSG]
+
+SPECIAL_TOKENS = FO_SPECIAL_TOKENS + ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
+
 MODEL_INPUTS = ["input_ids", "mc_token_ids", "lm_labels", "mc_labels", "token_type_ids"]
 PADDED_INPUTS = ["input_ids", "lm_labels", "token_type_ids"]
-
 logger = logging.getLogger(__file__)
+
 
 def average_distributed_scalar(scalar, args):
     """ Average a scalar over the nodes if we are in distributed training. We use this for distributed evaluation. """
@@ -46,8 +58,10 @@ def pad_dataset(dataset, padding=0):
                          for x in dataset[name]]
     return dataset
 
+
 def lchain(seq):
     return list(chain(*seq))
+
 
 def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=False, with_eos=True, max_seq_len=512):
     """ Build a sequence of input from 3 segments: persona, history and last reply """
@@ -142,7 +156,11 @@ def train(args):
     tokenizer_class = GPT2Tokenizer if "gpt2" in args.model_checkpoint else OpenAIGPTTokenizer
     tokenizer = tokenizer_class.from_pretrained(args.model_checkpoint)
     model_class = GPT2DoubleHeadsModel if "gpt2" in args.model_checkpoint else OpenAIGPTDoubleHeadsModel
-    model = model_class.from_pretrained(args.model_checkpoint)
+    if hasattr(args, 'ckpt_path'):
+        model = torch.load(args.ckpt_path)
+    else:
+        model = model_class.from_pretrained(args.model_checkpoint)
+
     tokenizer.set_special_tokens(SPECIAL_TOKENS)
     model.set_num_special_tokens(len(SPECIAL_TOKENS))
     model.to(args.device)
