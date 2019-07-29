@@ -20,7 +20,7 @@ from ignite.contrib.handlers.tensorboard_logger import TensorboardLogger, Output
 from pytorch_pretrained_bert import (OpenAIAdam, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer,
                                      GPT2DoubleHeadsModel, GPT2Tokenizer, WEIGHTS_NAME, CONFIG_NAME)
 
-
+import random
 from durbango import *
 
 
@@ -95,27 +95,7 @@ def get_data_loaders(personachat, args, tokenizer):
     """ Prepare the dataset for training and evaluation """
 
     logger.info("Build inputs and labels")
-    datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
-    for dataset_name, dataset in personachat.items():
-        num_candidates = len(dataset[0]["utterances"][0]["candidates"])
-        if args.num_candidates > 0 and dataset_name == 'train':
-            num_candidates = min(args.num_candidates, num_candidates)
-        for dialog in dataset:
-            persona = dialog["personality"].copy()
-            for _ in range(args.personality_permutations):
-                for utterance in dialog["utterances"]:
-                    history = utterance["history"][-(2*args.max_history+1):]
-                    pos_candidate = utterance["candidates"][-1]
-                    sampled_candidates = np.random.choice(utterance["candidates"][:-1], args.num_candidates -1)
-                    candidates = sampled_candidates + pos_candidate
-                    for j, candidate in enumerate(candidates):
-                        lm_labels = bool(j == num_candidates-1) # Last candidate is correct
-                        instance, _ = build_input_from_segments(persona, history, candidate, tokenizer, lm_labels)
-                        for input_name, input_array in instance.items():
-                            datasets[dataset_name][input_name].append(input_array)
-                    datasets[dataset_name]["mc_labels"].append(num_candidates - 1)
-                    datasets[dataset_name]["n_candidates"] = num_candidates
-                persona = [persona[-1]] + persona[:-1]  # permuted personalities
+    datasets = sample_from_ds(args, personachat, tokenizer)
 
     logger.info("Pad inputs and convert to Tensor")
     tensor_datasets = {"train": [], "valid": []}
@@ -137,6 +117,32 @@ def get_data_loaders(personachat, args, tokenizer):
     logger.info("Train dataset (Batch, Candidates, Seq length): {}".format(train_dataset.tensors[0].shape))
     logger.info("Valid dataset (Batch, Candidates, Seq length): {}".format(valid_dataset.tensors[0].shape))
     return train_loader, valid_loader, train_sampler, valid_sampler
+
+
+def sample_from_ds(args, personachat, tokenizer):
+    datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
+    for dataset_name, dataset in personachat.items():
+        num_candidates = len(dataset[0]["utterances"][0]["candidates"])
+        if args.num_candidates > 0 and dataset_name == 'train':
+            num_candidates = min(args.num_candidates, num_candidates)
+        for dialog in dataset:
+            persona = dialog["personality"].copy()
+            for _ in range(args.personality_permutations):
+                for utterance in dialog["utterances"]:
+                    history = utterance["history"][-(2 * args.max_history + 1):]
+                    pos_candidate = [utterance["candidates"][-1]]
+                    neg_candidates = random.choices(utterance["candidates"][:-1], k=num_candidates - 1)
+                    candidates = neg_candidates + pos_candidate
+                    for j, candidate in enumerate(candidates):
+                        lm_labels = bool(j == num_candidates - 1)  # Last candidate is correct
+                        instance, _ = build_input_from_segments(persona, history, candidate,
+                                                                tokenizer, lm_labels)
+                        for input_name, input_array in instance.items():
+                            datasets[dataset_name][input_name].append(input_array)
+                    datasets[dataset_name]["mc_labels"].append(num_candidates - 1)
+                    datasets[dataset_name]["n_candidates"] = num_candidates
+                persona = [persona[-1]] + persona[:-1]  # permuted personalities
+    return datasets
 
 
 def train(args):
