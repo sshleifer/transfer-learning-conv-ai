@@ -285,14 +285,15 @@ def train(args):
         tb_logger = TensorboardLogger(log_dir=log_dir)
 
         def global_step_transform(*args, **kwargs): return trainer.state.iteration
+        gst = global_step_transform if args.eval_every else None
 
         tb_logger.attach(trainer, log_handler=OutputHandler(tag="training", metric_names=["loss"]), event_name=Events.ITERATION_COMPLETED)
         tb_logger.attach(trainer, log_handler=OptimizerParamsHandler(optimizer), event_name=Events.ITERATION_STARTED)
-        if args.eval_every:
-            tb_logger.attach(evaluator,
-                         log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer, global_step_transform=global_step_transform),
-                        # TODO(SS): is this global_step_transform borked if args.eval_every =None
-                         event_name=Events.EPOCH_COMPLETED)
+        tb_logger.attach(evaluator,
+                     log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer, global_step_transform=gst),
+                    # TODO(SS): is this global_step_transform borked if args.eval_every =None
+                     event_name=Events.EPOCH_COMPLETED)
+
 
         checkpoint_handler = ModelCheckpoint(log_dir, 'checkpoint', save_interval=1, n_saved=3)
         trainer.add_event_handler(evaluate_event, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
