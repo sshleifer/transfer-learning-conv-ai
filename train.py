@@ -244,23 +244,17 @@ def train(args):
             return (lm_logits_flat_shifted, mc_logits), (lm_labels_flat_shifted, mc_labels)
     evaluator = Engine(inference)
 
-    cpe = CustomPeriodicEvent(n_iterations=500)
+    cpe = CustomPeriodicEvent(n_iterations=args.eval_every)
     cpe.attach(trainer)
-
-    #evaluator.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
-    #trainer.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
 
 
     # Attach evaluation to trainer: we evaluate when we start the eraining and at the end of each epoch
-    evaluate_event = Events.EPOCH_COMPLETED
+    evaluate_event = cpe._periodic_event_completed if args.eval_every else Events.EPOCH_COMPLETED
     run_eval = lambda _: evaluator.run(val_loader)
-    #trainer.add_event_handler(Events.EPOCH_COMPLETED, run_eval)
 
-    @trainer.on(cpe.Events.ITERATIONS_500_COMPLETED)
-    def evaluate(engine):
-        evaluator.run(val_loader)
-
-    #trainer.add_event_handler(evaluate_event, run_eval)
+    trainer.add_event_handler(evaluate_event, run_eval)
+        #def evaluate(engine):
+        #evaluator.run(val_loader)
     if args.n_epochs < 1:
         trainer.add_event_handler(Events.COMPLETED, lambda _: evaluator.run(val_loader))
     if args.eval_before_start:
@@ -294,8 +288,7 @@ def train(args):
 
         tb_logger = TensorboardLogger(log_dir=log_dir)
 
-        def global_step_transform(*args, **kwargs):
-            return trainer.state.iteration
+        def global_step_transform(*args, **kwargs): return trainer.state.iteration
 
         tb_logger.attach(trainer, log_handler=OutputHandler(tag="training", metric_names=["loss"]), event_name=Events.ITERATION_COMPLETED)
         tb_logger.attach(trainer, log_handler=OptimizerParamsHandler(optimizer), event_name=Events.ITERATION_STARTED)
