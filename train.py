@@ -156,10 +156,11 @@ def train(args):
     tokenizer_class = GPT2Tokenizer if "gpt2" in args.model_checkpoint else OpenAIGPTTokenizer
     tokenizer = tokenizer_class.from_pretrained(args.model_checkpoint)
     model_class = GPT2DoubleHeadsModel if "gpt2" in args.model_checkpoint else OpenAIGPTDoubleHeadsModel
-    if hasattr(args, 'ckpt_path'):
-        model = torch.load(args.ckpt_path)
-    else:
-        model = model_class.from_pretrained(args.model_checkpoint)
+    model = model_class.from_pretrained(args.model_checkpoint)
+    if getattr(args, 'ckpt_path'):
+        state_dict = torch.load(args.ckpt_path)
+        model.load_state_dict(state_dict)
+
 
     tokenizer.set_special_tokens(SPECIAL_TOKENS)
     model.set_num_special_tokens(len(SPECIAL_TOKENS))
