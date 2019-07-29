@@ -290,8 +290,10 @@ if __name__ == "__main__":
     # parser.add_argument("--eval_before_start", action='store_true', help="If true start with a first evaluation before training")
     # parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cuda or cpu)")
     # parser.add_argument("--fp16", type=str, default="", help="Set to O0, O1, O2 or O3 for fp16 training (see apex documentation)")
-    # parser.add_argument("--local_rank", type=int, default=-1, help="Local rank for distributed training (-1: not distributed)")
+    parser.add_argument("--local_rank", type=int, default=-1, help="Local rank for distributed training (-1: not distributed)")
     parser.add_argument("--args_path", type=str, help='path to args.pkl')
     base_args = parser.parse_args()
+
     args = pickle_load(base_args.args_path)
+    args.local_rank = base_args.local_rank
     train(args)
