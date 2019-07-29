@@ -253,8 +253,6 @@ def train(args):
     run_eval = lambda _: evaluator.run(val_loader)
 
     trainer.add_event_handler(evaluate_event, run_eval)
-        #def evaluate(engine):
-        #evaluator.run(val_loader)
     if args.n_epochs < 1:
         trainer.add_event_handler(Events.COMPLETED, lambda _: evaluator.run(val_loader))
     if args.eval_before_start:
@@ -292,7 +290,8 @@ def train(args):
 
         tb_logger.attach(trainer, log_handler=OutputHandler(tag="training", metric_names=["loss"]), event_name=Events.ITERATION_COMPLETED)
         tb_logger.attach(trainer, log_handler=OptimizerParamsHandler(optimizer), event_name=Events.ITERATION_STARTED)
-        tb_logger.attach(evaluator,
+        if args.eval_every:
+            tb_logger.attach(evaluator,
                          log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer, global_step_transform=global_step_transform),
                          event_name=Events.EPOCH_COMPLETED)
 
