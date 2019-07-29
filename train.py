@@ -33,7 +33,7 @@ DR_STRANG = 'Dr'
 
 FO_SPECIAL_TOKENS = [USER_NAME, DR_NAME, FOLLOWUP_MSG]
 
-SPECIAL_TOKENS = FO_SPECIAL_TOKENS + ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
+SPECIAL_TOKENS = ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
 
 MODEL_INPUTS = ["input_ids", "mc_token_ids", "lm_labels", "mc_labels", "token_type_ids"]
 PADDED_INPUTS = ["input_ids", "lm_labels", "token_type_ids"]
