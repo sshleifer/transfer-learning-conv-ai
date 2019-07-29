@@ -7,8 +7,8 @@ from pprint import pformat
 from argparse import ArgumentParser
 from collections import defaultdict
 from itertools import chain
-from durbango import pickle_save
 
+from  pathlib import Path
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, TensorDataset
@@ -21,8 +21,6 @@ from pytorch_pretrained_bert import (OpenAIAdam, OpenAIGPTDoubleHeadsModel, Open
                                      GPT2DoubleHeadsModel, GPT2Tokenizer, WEIGHTS_NAME, CONFIG_NAME)
 
 from durbango import *
-
-from utils import get_dataset
 
 SPECIAL_TOKENS = ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
 MODEL_INPUTS = ["input_ids", "mc_token_ids", "lm_labels", "mc_labels", "token_type_ids"]
@@ -125,6 +123,9 @@ def get_data_loaders(personachat, args, tokenizer):
 
 
 def train(args):
+    args.save_dir = Path(args.save_dir)
+    args.save_dir.mkdir(exist_ok=True)
+    log_dir = str(args.save_dir)
     # logging is set to INFO (resp. WARN) for main (resp. auxiliary) process. logger.info => log main process only, logger.warning => log all processes
     logging.basicConfig(level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
     logger.warning("Running process %d", args.local_rank)  # This is a logger.warning: it will be printed by all distributed processes
@@ -220,7 +221,6 @@ def train(args):
 
     # On the main process: add progress bar, tensorboard, checkpoints and save model, configuration and tokenizer before we start to train
 
-    log_dir = 'tboard_logs'
     if args.local_rank in [-1, 0]:
         pbar = ProgressBar(persist=True)
         pbar.attach(trainer, metric_names=["loss"])
