@@ -217,7 +217,7 @@ def train(args):
             engine.fire_event(EvalEvents.TIME_TO_RUN_EVAL)
         return loss.item()
     trainer = Engine(update)
-    trainer.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
+
 
     # Evaluation function and evaluator (evaluator output is the input of the metrics)
     def inference(engine, batch):
@@ -232,6 +232,9 @@ def train(args):
             lm_labels_flat_shifted = lm_labels[..., 1:].contiguous().view(-1)
             return (lm_logits_flat_shifted, mc_logits), (lm_labels_flat_shifted, mc_labels)
     evaluator = Engine(inference)
+
+    evaluator.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
+    trainer.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
 
 
     # Attach evaluation to trainer: we evaluate when we start the eraining and at the end of each epoch
