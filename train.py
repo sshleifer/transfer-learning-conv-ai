@@ -244,14 +244,14 @@ def train(args):
             return (lm_logits_flat_shifted, mc_logits), (lm_labels_flat_shifted, mc_labels)
     evaluator = Engine(inference)
 
-    cpe = CustomPeriodicEvent(n_iterations=args.eval_every)
-    cpe.attach(trainer)
-
-
+    if args.eval_every:
+        cpe = CustomPeriodicEvent(n_iterations=args.eval_every)
+        cpe.attach(trainer)
+        evaluate_event = cpe._periodic_event_completed
+    else:
+        evaluate_event = Events.EPOCH_COMPLETED
     # Attach evaluation to trainer: we evaluate when we start the eraining and at the end of each epoch
-    evaluate_event = cpe._periodic_event_completed if args.eval_every else Events.EPOCH_COMPLETED
     run_eval = lambda _: evaluator.run(val_loader)
-
     trainer.add_event_handler(evaluate_event, run_eval)
     if args.n_epochs < 1:
         trainer.add_event_handler(Events.COMPLETED, lambda _: evaluator.run(val_loader))
@@ -293,10 +293,11 @@ def train(args):
         if args.eval_every:
             tb_logger.attach(evaluator,
                          log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer, global_step_transform=global_step_transform),
+                        # TODO(SS): is this global_step_transform borked if args.eval_every =None
                          event_name=Events.EPOCH_COMPLETED)
 
         checkpoint_handler = ModelCheckpoint(log_dir, 'checkpoint', save_interval=1, n_saved=3)
-        trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
+        trainer.add_event_handler(evaluate_event, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
 
         torch.save(args, log_dir + '/model_training_args.bin')
         getattr(model, 'module', model).config.to_json_file(os.path.join(log_dir, CONFIG_NAME))
