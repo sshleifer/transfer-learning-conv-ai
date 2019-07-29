@@ -234,7 +234,7 @@ def train(args):
 
 
     # Attach evaluation to trainer: we evaluate when we start the eraining and at the end of each epoch
-    evaluate_event = EvalEvents.TIME_TO_RUN_EVAL
+    evaluate_event = EvalEvents.TIME_TO_RUN_EVAL if getattr(args, 'eval_every') else Events.EPOCH_COMPLETED
     run_eval = lambda _: evaluator.run(val_loader)
     #trainer.add_event_handler(Events.EPOCH_COMPLETED, run_eval)
     trainer.add_event_handler(evaluate_event, run_eval)
