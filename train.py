@@ -119,6 +119,7 @@ def get_data_loaders(personachat, args, tokenizer):
     return train_loader, valid_loader, train_sampler, valid_sampler
 
 
+
 def sample_from_ds(args, personachat, tokenizer):
     datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
     for dataset_name, dataset in personachat.items():
@@ -143,6 +144,12 @@ def sample_from_ds(args, personachat, tokenizer):
                     datasets[dataset_name]["n_candidates"] = num_candidates
                 persona = [persona[-1]] + persona[:-1]  # permuted personalities
     return datasets
+
+from enum import Enum
+
+class EvalEvents(Enum):
+    TIME_TO_RUN_EVAL = "time_iteration_started"
+
 
 
 def train(args):
@@ -206,6 +213,8 @@ def train(args):
         if engine.state.iteration % args.gradient_accumulation_steps == 0:
             optimizer.step()
             optimizer.zero_grad()
+        if (engine.state.iteration % getattr(args, 'eval_every') == 1):
+            engine.fire_event(EvalEvents.TIME_TO_RUN_EVAL)
         return loss.item()
     trainer = Engine(update)
 
@@ -223,8 +232,12 @@ def train(args):
             return (lm_logits_flat_shifted, mc_logits), (lm_labels_flat_shifted, mc_labels)
     evaluator = Engine(inference)
 
-    # Attach evaluation to trainer: we evaluate when we start the training and at the end of each epoch
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, lambda _: evaluator.run(val_loader))
+
+    # Attach evaluation to trainer: we evaluate when we start the eraining and at the end of each epoch
+    evaluate_event = EvalEvents.TIME_TO_RUN_EVAL
+    run_eval = lambda _: evaluator.run(val_loader)
+    #trainer.add_event_handler(Events.EPOCH_COMPLETED, run_eval)
+    trainer.add_event_handler(evaluate_event, run_eval)
     if args.n_epochs < 1:
         trainer.add_event_handler(Events.COMPLETED, lambda _: evaluator.run(val_loader))
     if args.eval_before_start:
@@ -259,10 +272,10 @@ def train(args):
         tb_logger = TensorboardLogger(log_dir=log_dir)
         tb_logger.attach(trainer, log_handler=OutputHandler(tag="training", metric_names=["loss"]), event_name=Events.ITERATION_COMPLETED)
         tb_logger.attach(trainer, log_handler=OptimizerParamsHandler(optimizer), event_name=Events.ITERATION_STARTED)
-        tb_logger.attach(evaluator, log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer), event_name=Events.EPOCH_COMPLETED)
+        tb_logger.attach(evaluator, log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer), event_name=evaluate_event)
 
         checkpoint_handler = ModelCheckpoint(log_dir, 'checkpoint', save_interval=1, n_saved=3)
-        trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
+        trainer.add_event_handler(evaluate_event, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
 
         torch.save(args, log_dir + '/model_training_args.bin')
         getattr(model, 'module', model).config.to_json_file(os.path.join(log_dir, CONFIG_NAME))
