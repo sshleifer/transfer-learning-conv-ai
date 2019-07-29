@@ -148,9 +148,6 @@ def sample_from_ds(args, personachat, tokenizer):
 from enum import Enum
 from ignite.contrib.handlers import CustomPeriodicEvent
 
-
-
-
 #cpe.Events.ITERATIONS_500_COMPLETED
 
 from ignite.contrib.handlers.tensorboard_logger import *
@@ -291,7 +288,6 @@ def train(args):
         tb_logger.attach(trainer, log_handler=OptimizerParamsHandler(optimizer), event_name=Events.ITERATION_STARTED)
         tb_logger.attach(evaluator,
                      log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer, global_step_transform=gst),
-                    # TODO(SS): is this global_step_transform borked if args.eval_every =None
                      event_name=Events.EPOCH_COMPLETED)
 
 
