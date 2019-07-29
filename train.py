@@ -217,6 +217,7 @@ def train(args):
             engine.fire_event(EvalEvents.TIME_TO_RUN_EVAL)
         return loss.item()
     trainer = Engine(update)
+    trainer.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
 
     # Evaluation function and evaluator (evaluator output is the input of the metrics)
     def inference(engine, batch):
