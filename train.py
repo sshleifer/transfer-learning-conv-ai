@@ -159,6 +159,8 @@ def train(args):
     model = model_class.from_pretrained(args.model_checkpoint)
     if getattr(args, 'ckpt_path'):
         state_dict = torch.load(args.ckpt_path)
+        extra_toks = len(state_dict['transformer.tokens_embed.weight'].shape[0]) - model.transformer.tokens_embed.weight.shape[0]
+        model.set_num_special_tokens(extra_toks)
         model.load_state_dict(state_dict)
 
 
