@@ -146,25 +146,17 @@ def sample_from_ds(args, personachat, tokenizer):
     return datasets
 
 from enum import Enum
-
 from ignite.contrib.handlers import CustomPeriodicEvent
 
 
 
 
-cpe.Events.ITERATIONS_500_COMPLETED
-
+#cpe.Events.ITERATIONS_500_COMPLETED
 
 from ignite.contrib.handlers.tensorboard_logger import *
 
-tb_logger = TensorboardLogger(log_dir="experiments/tb_logs")
 
-
-def global_step_transform(*args, **kwargs):
-    return trainer.state.iteration
-
-class EvalEvents(Enum):
-    TIME_TO_RUN_EVAL = "time_iteration_started"
+class EvalEvents(Enum): TIME_TO_RUN_EVAL = "time_iteration_started"
 
 
 
@@ -260,7 +252,7 @@ def train(args):
 
 
     # Attach evaluation to trainer: we evaluate when we start the eraining and at the end of each epoch
-    evaluate_event = EvalEvents.TIME_TO_RUN_EVAL if getattr(args, 'eval_every') else Events.EPOCH_COMPLETED
+    evaluate_event = Events.EPOCH_COMPLETED
     run_eval = lambda _: evaluator.run(val_loader)
     #trainer.add_event_handler(Events.EPOCH_COMPLETED, run_eval)
 
@@ -268,7 +260,7 @@ def train(args):
     def evaluate(engine):
         evaluator.run(val_loader)
 
-    trainer.add_event_handler(evaluate_event, run_eval)
+    #trainer.add_event_handler(evaluate_event, run_eval)
     if args.n_epochs < 1:
         trainer.add_event_handler(Events.COMPLETED, lambda _: evaluator.run(val_loader))
     if args.eval_before_start:
@@ -312,7 +304,7 @@ def train(args):
                          event_name=Events.EPOCH_COMPLETED)
 
         checkpoint_handler = ModelCheckpoint(log_dir, 'checkpoint', save_interval=1, n_saved=3)
-        trainer.add_event_handler(evaluate_event, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
+        trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
 
         torch.save(args, log_dir + '/model_training_args.bin')
         getattr(model, 'module', model).config.to_json_file(os.path.join(log_dir, CONFIG_NAME))
