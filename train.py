@@ -31,7 +31,7 @@ DR_NAME = 'xDr_Name'
 FOLLOWUP_MSG = 'xFollowup_Msg'
 DR_STRANG = 'Dr'
 
-FO_SPECIAL_TOKENS = [MSG_USER, MSG_DR, USER_NAME, DR_NAME, FOLLOWUP_MSG]
+FO_SPECIAL_TOKENS = [USER_NAME, DR_NAME, FOLLOWUP_MSG]
 
 SPECIAL_TOKENS = FO_SPECIAL_TOKENS + ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
 
