@@ -147,6 +147,22 @@ def sample_from_ds(args, personachat, tokenizer):
 
 from enum import Enum
 
+from ignite.contrib.handlers import CustomPeriodicEvent
+
+
+
+
+cpe.Events.ITERATIONS_500_COMPLETED
+
+
+from ignite.contrib.handlers.tensorboard_logger import *
+
+tb_logger = TensorboardLogger(log_dir="experiments/tb_logs")
+
+
+def global_step_transform(*args, **kwargs):
+    return trainer.state.iteration
+
 class EvalEvents(Enum):
     TIME_TO_RUN_EVAL = "time_iteration_started"
 
@@ -160,6 +176,9 @@ def train(args):
     logging.basicConfig(filename=args.save_dir/'logs.log', level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN, format='%(asctime)s %(message)s')
     logger.warning("Running process %d", args.local_rank)  # This is a logger.warning: it will be printed by all distributed processes
     logger.info("Arguments: %s", pformat(args))
+
+
+
 
     # Initialize distributed training if needed
     args.distributed = (args.local_rank != -1)
@@ -233,14 +252,22 @@ def train(args):
             return (lm_logits_flat_shifted, mc_logits), (lm_labels_flat_shifted, mc_labels)
     evaluator = Engine(inference)
 
-    evaluator.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
-    trainer.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
+    cpe = CustomPeriodicEvent(n_iterations=500)
+    cpe.attach(trainer)
+
+    #evaluator.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
+    #trainer.register_events(*EvalEvents, {EvalEvents.TIME_TO_RUN_EVAL: 'time_to_run_eval'})
 
 
     # Attach evaluation to trainer: we evaluate when we start the eraining and at the end of each epoch
     evaluate_event = EvalEvents.TIME_TO_RUN_EVAL if getattr(args, 'eval_every') else Events.EPOCH_COMPLETED
     run_eval = lambda _: evaluator.run(val_loader)
     #trainer.add_event_handler(Events.EPOCH_COMPLETED, run_eval)
+
+    @trainer.on(cpe.Events.ITERATIONS_500_COMPLETED)
+    def evaluate(engine):
+        evaluator.run(val_loader)
+
     trainer.add_event_handler(evaluate_event, run_eval)
     if args.n_epochs < 1:
         trainer.add_event_handler(Events.COMPLETED, lambda _: evaluator.run(val_loader))
@@ -274,9 +301,15 @@ def train(args):
         evaluator.add_event_handler(Events.COMPLETED, lambda _: pbar.log_message("Validation: %s" % pformat(evaluator.state.metrics)))
 
         tb_logger = TensorboardLogger(log_dir=log_dir)
+
+        def global_step_transform(*args, **kwargs):
+            return trainer.state.iteration
+
         tb_logger.attach(trainer, log_handler=OutputHandler(tag="training", metric_names=["loss"]), event_name=Events.ITERATION_COMPLETED)
         tb_logger.attach(trainer, log_handler=OptimizerParamsHandler(optimizer), event_name=Events.ITERATION_STARTED)
-        tb_logger.attach(evaluator, log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer), event_name='time_to_run_eval')
+        tb_logger.attach(evaluator,
+                         log_handler=OutputHandler(tag="validation", metric_names=list(metrics.keys()), another_engine=trainer, global_step_transform=global_step_transform),
+                         event_name=Events.EPOCH_COMPLETED)
 
         checkpoint_handler = ModelCheckpoint(log_dir, 'checkpoint', save_interval=1, n_saved=3)
         trainer.add_event_handler(evaluate_event, checkpoint_handler, {'mymodel': getattr(model, 'module', model)})  # "getattr" take care of distributed encapsulation
