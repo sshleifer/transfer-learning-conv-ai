@@ -105,7 +105,10 @@ def get_data_loaders(personachat, args, tokenizer):
             for _ in range(args.personality_permutations):
                 for utterance in dialog["utterances"]:
                     history = utterance["history"][-(2*args.max_history+1):]
-                    for j, candidate in enumerate(utterance["candidates"][-num_candidates:]):
+                    pos_candidate = utterance["candidates"][-1]
+                    sampled_candidates = np.random.choice(utterance["candidates"][:-1], args.num_candidates -1)
+                    candidates = sampled_candidates + pos_candidate
+                    for j, candidate in enumerate(candidates):
                         lm_labels = bool(j == num_candidates-1) # Last candidate is correct
                         instance, _ = build_input_from_segments(persona, history, candidate, tokenizer, lm_labels)
                         for input_name, input_array in instance.items():
