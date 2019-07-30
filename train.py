@@ -23,6 +23,9 @@ from pytorch_pretrained_bert import (OpenAIAdam, OpenAIGPTDoubleHeadsModel, Open
 import random
 from durbango import *
 
+from ignite.contrib.handlers import CustomPeriodicEvent
+from ignite.contrib.handlers.tensorboard_logger import *
+
 
 MSG_USER = 'xMsg_User'  # user message begin tag / begin of individual message
 MSG_DR = 'xMsg_Dr'  # Dr message begin tag / begin of individual message
@@ -52,8 +55,9 @@ def average_distributed_scalar(scalar, args):
 def pad_dataset(dataset, padding=0):
     """ Pad the dataset. This could be optimized by defining a Dataset class and pad only batches but this is simpler. """
     max_l = max(len(x) for x in dataset["input_ids"])
-    print(max_l)
+    print(f'padding to {max_l}')
     for name in PADDED_INPUTS:
+        if name not in dataset: continue
         dataset[name] = [x + [padding if name != "lm_labels" else -1] * (max_l - len(x))
                          for x in dataset[name]]
     return dataset
@@ -65,29 +69,31 @@ def lchain(seq):
 
 def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=False, with_eos=True, max_seq_len=512):
     """ Build a sequence of input from 3 segments: persona, history and last reply """
-    bos, eos, speaker1, speaker2 = tokenizer.convert_tokens_to_ids(SPECIAL_TOKENS[:-1])
+    instance, sequence = get_input_ids(history, persona, reply, tokenizer, with_eos, max_seq_len)
+    instance["mc_token_ids"] = len(instance["input_ids"]) - 1
+    instance["lm_labels"] = [-1] * len(instance["input_ids"])
+    if lm_labels:
+        instance["lm_labels"] = ([-1] * sum(len(s) for s in sequence[:-1])) + [-1] + sequence[-1][1:]
+    return instance, sequence
 
+
+def get_input_ids(history, persona, reply, tokenizer, with_eos, max_seq_len):
+    bos, eos, speaker1, speaker2 = tokenizer.convert_tokens_to_ids(SPECIAL_TOKENS[:-1])
     instance = {}
     start = [[bos] + list(chain(*persona))]
     end = [reply + ([eos] if with_eos else [])]
     n_speaker_toks = len(history) + len(reply)
     extra_toks = (max_seq_len - len(lchain(start)) - len(lchain(end)) - n_speaker_toks)
-
-
     while len(lchain(history)) > extra_toks:
         history = history[1:]
     sequence = start + history + end
-    hist_part = [[speaker2 if (len(sequence) - i) % 2 else speaker1] + s for i, s in enumerate(sequence[1:])]
-
+    hist_part = [[speaker2 if (len(sequence) - i) % 2 else speaker1] + s for i, s in
+                 enumerate(sequence[1:])]
     sequence = [sequence[0]] + hist_part
-    if len(lchain(sequence)) > 512: import ipdb; ipdb.set_trace()
+    if len(lchain(sequence)) > 512: raise ValueError(f'sequence longer than 512: {sequence}')
     instance["input_ids"] = list(chain(*sequence))
-
-    instance["token_type_ids"] = [speaker2 if i % 2 else speaker1 for i, s in enumerate(sequence) for _ in s]
-    instance["mc_token_ids"] = len(instance["input_ids"]) - 1
-    instance["lm_labels"] = [-1] * len(instance["input_ids"])
-    if lm_labels:
-        instance["lm_labels"] = ([-1] * sum(len(s) for s in sequence[:-1])) + [-1] + sequence[-1][1:]
+    instance["token_type_ids"] = [speaker2 if i % 2 else speaker1 for i, s in enumerate(sequence)
+                                  for _ in s]
     return instance, sequence
 
 
@@ -102,9 +108,12 @@ def get_data_loaders(personachat, args, tokenizer):
     for dataset_name, dataset in datasets.items():
         dataset = pad_dataset(dataset, padding=tokenizer.convert_tokens_to_ids(SPECIAL_TOKENS[-1]))
         for input_name in MODEL_INPUTS:
+            if input_name not in dataset: continue
             tensor = torch.tensor(dataset[input_name])
             if input_name != "mc_labels":
+                print(f'{input_name}: {tensor.shape}')
                 tensor = tensor.view((-1, datasets[dataset_name]["n_candidates"]) + tensor.shape[1:])
+                print(tensor.shape)
             tensor_datasets[dataset_name].append(tensor)
 
     logger.info("Build train and validation dataloaders")
@@ -117,8 +126,6 @@ def get_data_loaders(personachat, args, tokenizer):
     logger.info("Train dataset (Batch, Candidates, Seq length): {}".format(train_dataset.tensors[0].shape))
     logger.info("Valid dataset (Batch, Candidates, Seq length): {}".format(valid_dataset.tensors[0].shape))
     return train_loader, valid_loader, train_sampler, valid_sampler
-
-
 
 def sample_from_ds(args, personachat, tokenizer):
     datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
@@ -136,7 +143,8 @@ def sample_from_ds(args, personachat, tokenizer):
                     candidates = neg_candidates + pos_candidate
                     for j, candidate in enumerate(candidates):
                         lm_labels = bool(j == num_candidates - 1)  # Last candidate is correct
-                        instance, _ = build_input_from_segments(persona, history, candidate,
+                        persona_to_use = [] if args.ignore_persona else persona
+                        instance, _ = build_input_from_segments(persona_to_use, history, candidate,
                                                                 tokenizer, lm_labels)
                         for input_name, input_array in instance.items():
                             datasets[dataset_name][input_name].append(input_array)
@@ -145,16 +153,26 @@ def sample_from_ds(args, personachat, tokenizer):
                 persona = [persona[-1]] + persona[:-1]  # permuted personalities
     return datasets
 
-from enum import Enum
-from ignite.contrib.handlers import CustomPeriodicEvent
 
-#cpe.Events.ITERATIONS_500_COMPLETED
+def make_ctx_dl(args, history, persona, tokenizer, with_eos=True, max_seq_len=512):
+    ds = defaultdict(list)
+    for h in history:
+        instance, sequence = get_input_ids(persona, h, [], tokenizer, with_eos=with_eos,max_seq_len=max_seq_len)
+        for input_name, input_array in instance.items():
+            ds[input_name].append(input_array)
+    padded_ds = pad_dataset(ds, padding=tokenizer.convert_tokens_to_ids(SPECIAL_TOKENS[-1]))
+    logger.info("Pad inputs and convert to Tensor")
+    tensor_dataset = []
 
-from ignite.contrib.handlers.tensorboard_logger import *
-
-
-class EvalEvents(Enum): TIME_TO_RUN_EVAL = "time_iteration_started"
-
+    for input_name in ['input_ids', 'position_ids']:
+        if input_name not in padded_ds: continue
+        tensor = torch.tensor(padded_ds[input_name])
+        if input_name != "mc_labels":
+            tensor = tensor.view((-1, 1) + tensor.shape[1:])
+        tensor_dataset.append(tensor)
+    tensor_ds = TensorDataset(*tensor_dataset)
+    loader = DataLoader(tensor_ds, batch_size=args.train_batch_size, shuffle=False)
+    return loader
 
 
 def train(args):
@@ -166,10 +184,6 @@ def train(args):
     logger.warning("Running process %d", args.local_rank)  # This is a logger.warning: it will be printed by all distributed processes
     logger.info("Arguments: %s", pformat(args))
 
-
-
-
-    # Initialize distributed training if needed
     args.distributed = (args.local_rank != -1)
     if args.distributed:
         torch.cuda.set_device(args.local_rank)
