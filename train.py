@@ -351,7 +351,7 @@ if __name__ == "__main__":
     # Additions
     parser.add_argument('save_dir', type=str)
     parser.add_argument('--ckpt_path', type=str, default='')
-    parser.add_argument('--eval_every', default=None)
+    parser.add_argument('--eval_every', type=int, default=None)
 
 
     args = parser.parse_args()
