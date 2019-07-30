@@ -83,8 +83,9 @@ def get_input_ids(history, persona, reply, tokenizer, with_eos, max_seq_len):
     start = [[bos] + list(chain(*persona))]
     end = [reply + ([eos] if with_eos else [])]
     n_speaker_toks = len(history) + len(reply)
-    extra_toks = (max_seq_len - len(lchain(start)) - len(lchain(end)) - n_speaker_toks)
+    extra_toks = (max_seq_len - len(lchain(start)) - len(lchain(end)) - n_speaker_toks) - 1
     assert extra_toks > 0
+    # Edge cases like long-ass reply
     while len(lchain(history)) > extra_toks:
         history = history[1:]
     sequence = start + history + end
