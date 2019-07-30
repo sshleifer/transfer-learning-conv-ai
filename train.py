@@ -84,6 +84,7 @@ def get_input_ids(history, persona, reply, tokenizer, with_eos, max_seq_len):
     end = [reply + ([eos] if with_eos else [])]
     n_speaker_toks = len(history) + len(reply)
     extra_toks = (max_seq_len - len(lchain(start)) - len(lchain(end)) - n_speaker_toks)
+    assert extra_toks > 0
     while len(lchain(history)) > extra_toks:
         history = history[1:]
     sequence = start + history + end
@@ -154,25 +155,49 @@ def sample_from_ds(args, personachat, tokenizer):
     return datasets
 
 
-def make_ctx_dl(args, history, persona, tokenizer, with_eos=True, max_seq_len=512):
+#def extra
+TARGET_COL = 'target'
+HISTORY = 'history'
+def make_ctx_dl(ctx_dd, persona, tokenizer, with_eos=True, max_seq_len=512, batch_size=3):
     ds = defaultdict(list)
-    for h in history:
-        instance, sequence = get_input_ids(persona, h, [], tokenizer, with_eos=with_eos,max_seq_len=max_seq_len)
+    hists, targets = ctx_dd[HISTORY], ctx_dd[TARGET_COL]
+    for i in tqdm_nice(range(len(hists))):
+        h, target = hists[i], targets[i] # zip
+        instance, sequence = get_input_ids(h, persona, [], tokenizer, with_eos=with_eos, max_seq_len=max_seq_len)
+        instance[TARGET_COL] = target
         for input_name, input_array in instance.items():
             ds[input_name].append(input_array)
+
+    loader = pad_and_tensorize(ds, tokenizer, batch_size=batch_size)
+    return loader
+
+
+def pad_and_tensorize(ds, tokenizer, batch_size=3):
     padded_ds = pad_dataset(ds, padding=tokenizer.convert_tokens_to_ids(SPECIAL_TOKENS[-1]))
     logger.info("Pad inputs and convert to Tensor")
     tensor_dataset = []
-
-    for input_name in ['input_ids', 'position_ids']:
+    for input_name in MODEL_INPUTS + [TARGET_COL]:
         if input_name not in padded_ds: continue
         tensor = torch.tensor(padded_ds[input_name])
         if input_name != "mc_labels":
             tensor = tensor.view((-1, 1) + tensor.shape[1:])
         tensor_dataset.append(tensor)
+        print(input_name)
     tensor_ds = TensorDataset(*tensor_dataset)
-    loader = DataLoader(tensor_ds, batch_size=args.train_batch_size, shuffle=False)
+    loader = DataLoader(tensor_ds, batch_size=batch_size, shuffle=False)
     return loader
+
+
+def make_resp_dl(clus_map: pd.Series, tokenizer, persona=(), with_eos=True, max_seq_len=512, batch_size=3):
+    ds = defaultdict(list)
+    #hists, targets = ctx_dd[HISTORY], ctx_dd[TARGET_COL]
+    for target, text in clus_map.items():
+        instance, sequence = get_input_ids([], persona, text, tokenizer, with_eos=with_eos, max_seq_len=max_seq_len)
+        instance[TARGET_COL] = target
+        for input_name, input_array in instance.items():
+            ds[input_name].append(input_array)
+    return pad_and_tensorize(ds, tokenizer, batch_size=batch_size)
+
 
 
 def train(args):
