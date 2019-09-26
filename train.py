@@ -21,8 +21,8 @@ from pytorch_transformers import (AdamW, OpenAIGPTDoubleHeadsModel, OpenAIGPTTok
 
 from utils import get_dataset, make_logdir
 EOS_TOKEN = '<|endoftext|>'
-SPECIAL_TOKENS = ["<bos>", EOS_TOKEN, "<speaker1>", "<speaker2>", "<pad>"]
-ATTR_TO_SPECIAL_TOKEN = {'bos_token': '<bos>', 'eos_token': EOS_TOKEN, 'pad_token': '<pad>',
+SPECIAL_TOKENS = [EOS_TOKEN, EOS_TOKEN, "<speaker1>", "<speaker2>", "<pad>"]
+ATTR_TO_SPECIAL_TOKEN = {'bos_token': EOS_TOKEN, 'eos_token': EOS_TOKEN, 'pad_token': EOS_TOKEN,
                          'additional_special_tokens': ('<speaker1>', '<speaker2>')}
 MODEL_INPUTS = ["input_ids", "mc_token_ids", "lm_labels", "mc_labels", "token_type_ids"]
 PADDED_INPUTS = ["input_ids", "lm_labels", "token_type_ids"]
